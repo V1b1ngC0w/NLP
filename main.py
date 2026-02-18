@@ -1,4 +1,6 @@
 from datasets import load_dataset
+import re
+from preprocessing_normalisation import preprocess,normalise
 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -14,6 +16,7 @@ from sklearn.metrics import (
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
 
 SEED = 69
 
@@ -34,6 +37,10 @@ test = dataset_dict["test"].to_pandas()
 
 train_full["text"] = train_full["text"].str.lower()
 test["text"] = test["text"].str.lower()
+
+#applying our preprocessing and normalisation functions from the other file
+train_full["text"] = train_full["text"].apply(preprocess)
+train_full["text"] = train_full["text"].apply(normalise)
 print(train_full.head(20))
 
 

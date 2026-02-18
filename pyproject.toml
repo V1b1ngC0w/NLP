@@ -5,8 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "contractions>=0.1.73",
     "datasets>=4.5.0",
     "matplotlib>=3.10.8",
+    "nltk>=3.9.2",
     "pandas>=3.0.0",
     "scikit-learn>=1.8.0",
 ]
