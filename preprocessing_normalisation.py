@@ -1,18 +1,26 @@
 import re
 import contractions
 import pandas as pd
-from nltk.stem import LancasterStemmer
-
+from num2words import num2words
+import nltk
+from nltk.stem import WordNetLemmatizer
+nltk.download('wordnet')
+nltk.download('omw-1.4')
 
 def preprocess(text: str) -> str:
 
-    def replace_contractions(text):
-        """Replace contractions in string of text"""
+    def replace_contractions(text:str) -> str:
+        """
+        Function to replace contractions in a string of text.
+        E.g. isn't -> is not
+        """
         return contractions.fix(text)
 
-    def remove_URL(sample):
-        """Remove URLs from a sample string"""
-        return re.sub(r"http\S+", "", sample)
+    def remove_URL(text:str) -> str:
+        """
+        Function to remove URLs from a string of text.
+        """
+        return re.sub(r"http\S+", "", text)
 
     text = remove_URL(text)
     text = replace_contractions(text)
@@ -20,21 +28,32 @@ def preprocess(text: str) -> str:
     return text
 
 
-def normalise(text: str) -> str:
+def normalise(text:str) -> str:
 
-    lancaster = LancasterStemmer()
+    lemmatizer = WordNetLemmatizer()
 
     def lowerise(text):
+        """
+        Function that makes all words in a string lowercase
+        """
         return text.lower()
 
     def remove_punctuation(text):
+        """
+        Function that removes all punctuation from a string of text
+        """
         # check if text is None or non string
         if pd.isna(text):
             return text
-        return re.sub(r'[^\w\s]', '', str(text))
+        return re.sub(r'[^\w\s]', '', text)
 
     def remove_common_words(text):
-        common_words = ["the", "our", "and", "a"]
+        """
+        Function that removes words that are the most common in english,
+        those that dont provide information on the text context.
+        """
+        common_words = ["the", "our", "and", "a","of",
+                        "in","to","an","is","that","were"]
         if pd.isna(text):
             return text
         text = " ".join([
@@ -42,25 +61,40 @@ def normalise(text: str) -> str:
         ])
         return text
 
-    def stem_words(text):
-        #! This function is kinda ass, ran it and it changed the words too much and too weird,
-        #! will try to find a different library to stem words
+    def lematize_words(text:str) -> str:
         """
-        Function that stems words in a list of words.
-        E.g. starting -> start
+        Function that lemmatizes each word in a string of text
+        E.g. studies -> study
+        """
+
+        if pd.isna(text):
+            return text
+
+        words = str(text).split()
+        lemmatized_words = [lemmatizer.lemmatize(word) for word in words]
+        
+        return " ".join(lemmatized_words)
+    
+    def numbers_to_words(text:str) -> str:
+        """
+        Function that changes numerically represented numbers to 
+        their words.
+        E.g. 67 -> sixty-seven
         """
         if pd.isna(text):
             return text
-        words = str(text).split()
-        stemmed_words = [lancaster.stem(word) for word in words]
+    
+        def replace_with_words(match):
+            return num2words(int(match.group()))
 
-        return " ".join(stemmed_words)
+        return re.sub(r'\d+', replace_with_words, str(text))
 
-    #TODO: Can add mnore functions here if needed, can do numbers->words
+    
 
     text = lowerise(text)
+    text = numbers_to_words(text)
     text = remove_punctuation(text)
     text = remove_common_words(text)
-    #text = stem_words(text)
+    text = lematize_words(text)
 
     return text
