@@ -10,7 +10,6 @@ from sklearn.metrics import (
     log_loss,
     f1_score,
     confusion_matrix,
-    classification_report,
     hinge_loss,
     ConfusionMatrixDisplay,
 )
@@ -57,12 +56,43 @@ def calculate_metrics(real: pd.DataFrame, pred: list,  model: str) -> None:
         print("-" * 80)
 
 
-def hyperparameter_tuning(
+def evaluate_model(
+        model: LogisticRegression | LinearSVC,
+        X_train: list,
+        X_dev: list,
+        y_train: list,
+        y_dev: list
+        ) -> float:
+
+    # train the model
+    model.fit(X_train, y_train)
+
+    if isinstance(model, LogisticRegression):
+        train_pred = model.predict_proba(X_train)
+        dev_pred = model.predict_proba(X_dev)
+        # calculate the log loss
+        train_loss = log_loss(y_train, train_pred)
+        dev_loss = log_loss(y_dev, dev_pred)
+    else:
+        train_pred = model.decision_function(X_train)
+        dev_pred = model.decision_function(X_dev)
+        # calculate the squared hinge loss
+        train_loss = hinge_loss(y_train, train_pred)**2
+        dev_loss = hinge_loss(y_dev, dev_pred)**2
+
+    print(f"Train Loss: {train_loss:.4f} | Dev Loss: {dev_loss:.4f}")
+    return dev_loss
+
+
+def tf_idf_tuning(
         train: pd.DataFrame,
         dev: pd.DataFrame,
+        test: pd.DataFrame,
         model: LogisticRegression | LinearSVC,
         epochs: int = 15,
-        ) -> TfidfVectorizer:
+        ) -> tuple[list, list, list]:
+
+    print("\nTuning max number of features...\n")
 
     max_features = 1000
     picked_tf_idf = None
@@ -82,31 +112,104 @@ def hyperparameter_tuning(
         X_train = tf_idf.fit_transform(train["text"])
         X_dev = tf_idf.transform(dev["text"])
 
-        # train the model
-        model.fit(X_train, train["label"])
+        dev_loss = evaluate_model(
+                    model,
+                    X_train,
+                    X_dev,
+                    train["label"],
+                    dev["label"]
+                    )
 
-        if isinstance(model, LogisticRegression):
-            train_pred = model.predict_proba(X_train)
-            dev_pred = model.predict_proba(X_dev)
-            # calculate the log loss
-            test_loss = log_loss(train["label"], train_pred)
-            dev_loss = log_loss(dev["label"], dev_pred)
-
-        else:
-            train_pred = model.decision_function(X_train)
-            dev_pred = model.decision_function(X_dev)
-            # calculate the squared hinge loss
-            test_loss = hinge_loss(train["label"], train_pred)**2
-            dev_loss = hinge_loss(dev["label"], dev_pred)**2
-
-        print(f"Test Loss: {test_loss} | Dev Loss: {dev_loss}")
         # save the TF-IDF that leads to the smallest loss
         if dev_loss < best:
             best, picked_tf_idf = dev_loss, tf_idf
 
         max_features += 2000
 
-    return picked_tf_idf
+    # apply best TF-IDF on the documents
+    X_train = picked_tf_idf.fit_transform(train["text"])
+    # do not fit on the dev and on test as it results in leakage
+    X_dev = picked_tf_idf.transform(dev["text"])
+    X_test = picked_tf_idf.transform(test["text"])
+
+    return X_train, X_dev, X_test
+
+
+def regularization_tuning(
+        X_train: list,
+        X_dev: list,
+        y_train: list,
+        y_dev: list,
+        model: LogisticRegression | LinearSVC,
+        epochs: int = 15,
+        ) -> LogisticRegression | LinearSVC:
+
+    print("\nTuning regularization factor...\n")
+    c = 0.5
+    picked_c = None
+    best = float('inf')
+
+    for i in range(epochs):
+        print(f"\nEpoch {i}:")
+
+        if isinstance(model, LogisticRegression):
+            model = LogisticRegression(random_state=SEED, C=c, solver="saga")
+        else:
+            model = LinearSVC(loss="squared_hinge", C=c, random_state=SEED)
+
+        dev_loss = evaluate_model(
+                    model,
+                    X_train,
+                    X_dev,
+                    y_train,
+                    y_dev
+                    )
+
+        # save the C that leads to the smallest loss
+        if dev_loss < best:
+            best, picked_c = dev_loss, c
+
+        c += 0.5
+
+    # restore best C
+    if isinstance(model, LogisticRegression):
+        model = LogisticRegression(
+            random_state=SEED,
+            C=picked_c,
+            solver="saga"
+            )
+    else:
+        model = LinearSVC(loss="squared_hinge", C=picked_c, random_state=SEED)
+
+    model.fit(X_train, y_train)
+    return model
+
+
+def run_model(
+        model: LinearSVC | LogisticRegression,
+        train: pd.DataFrame,
+        dev: pd.DataFrame,
+        test: pd.DataFrame,
+        msg: str
+        ) -> None:
+
+    X_train, X_dev, X_test = tf_idf_tuning(
+        train=train,
+        dev=dev,
+        test=test,
+        model=model
+    )
+
+    model = regularization_tuning(
+        X_train,
+        X_dev,
+        train["label"],
+        dev["label"],
+        model
+    )
+
+    lr_pred = model.predict(X_test)
+    calculate_metrics(test, lr_pred, msg)
 
 
 def main() -> None:
@@ -143,27 +246,10 @@ def main() -> None:
     print(f"Test size:  {len(test)} rows")
 
     lr = LogisticRegression(random_state=SEED, solver="saga")
-    #svm = LinearSVC(loss="squared_hinge", random_state=SEED)
+    svm = LinearSVC(loss="squared_hinge", random_state=SEED)
 
-    tf_idf = hyperparameter_tuning(
-        train=train,
-        dev=dev,
-        model=lr
-    )
-
-    # apply TF-IDF on the documents
-    X_train = tf_idf.fit_transform(train["text"])
-    # do not fit on the dev and on test as it results in leakage
-    X_test = tf_idf.transform(test["text"])
-
-    lr.fit(X_train, train["label"])
-    lr_pred = lr.predict(X_test)
-    calculate_metrics(test, lr_pred, "Logistic Regression")
-
-
-    #svm.fit(X_train, train["label"])
-    #svm_pred = svm.predict(X_test)
-    #calculate_metrics(test, svm_pred, "SVM")
+    run_model(lr, train, dev, test, "Logistic Regression")
+    run_model(svm, train, dev, test, "SVM")
 
 
 if __name__ == "__main__":
