@@ -6,6 +6,11 @@ Into your bash command line, copy and paste the following command:
 ~~~
 git clone https://github.com/V1b1ngC0w/NLP.git
 ~~~
+Then you must navigate to the newly clone NLP directory with the command:
+~~~
+cd NLP
+~~~
+
 Then to sync all of the library dependencies, copy and paste the following command:
 ~~~
 uv sync
