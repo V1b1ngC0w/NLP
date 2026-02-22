@@ -209,7 +209,9 @@ def run_model(
     )
 
     lr_pred = model.predict(X_test)
+    lr_dev = model.predict(X_dev)
     calculate_metrics(test, lr_pred, msg)
+    calculate_metrics(dev, lr_dev, msg + " dev")
 
 
 def main() -> None:
@@ -231,6 +233,7 @@ def main() -> None:
     train_full["text"] = train_full["text"].apply(preprocess).apply(normalise)
     test["text"] = test["text"].apply(preprocess).apply(normalise)
 
+    print("Loaded data head (before split):")
     print(train_full.head(5))
 
     # split the training dataset into train and validation
@@ -241,6 +244,7 @@ def main() -> None:
         stratify=train_full["label"]
     )
 
+    print("Split:")
     print(f"\nTrain size: {len(train)} rows")
     print(f"Dev size:   {len(dev)} rows")
     print(f"Test size:  {len(test)} rows")
